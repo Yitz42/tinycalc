@@ -1,0 +1,85 @@
+{
+  "name": "tinysci",
+  "author": "Yitz",
+  "description": "Touch calculator that types like math and solves equations: every root, exact answers, x/y systems, integrals, derivatives and answer history.",
+  "version": "1.1.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "TinySci",
+    "uuid": "84749d71-c162-4ef6-9ffe-2fffde34a23d",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "BtnUp",
+      "BtnUpHold",
+      "BtnDown",
+      "BtnDownHold",
+      "BtnSelect",
+      "BtnSelectHold",
+      "Graph",
+      "Buzz",
+      "Backlight",
+      "ClearHistory",
+      "Format",
+      "Digits"
+    ],
+    "resources": {
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "IMAGE_MENU_ICON",
+          "file": "images/menu_icon.png",
+          "menuIcon": true
+        },
+        {
+          "type": "raw",
+          "name": "OVL_MATH",
+          "file": "ovl/math.ovl"
+        },
+        {
+          "type": "raw",
+          "name": "OVL_CAS",
+          "file": "ovl/cas.ovl"
+        },
+        {
+          "type": "raw",
+          "name": "OVL_GRAPH",
+          "file": "ovl/graph.ovl"
+        },
+        {
+          "type": "raw",
+          "name": "OVL_FMT",
+          "file": "ovl/fmt.ovl"
+        },
+        {
+          "type": "raw",
+          "name": "OVL_TOOLS",
+          "file": "ovl/tools.ovl"
+        },
+        {
+          "type": "raw",
+          "name": "OVL_CPLX",
+          "file": "ovl/cplx.ovl"
+        },
+        {
+          "type": "raw",
+          "name": "OVL_CALCU",
+          "file": "ovl/calcu.ovl"
+        }
+      ]
+    },
+    "capabilities": [
+      "configurable"
+    ]
+  }
+}
