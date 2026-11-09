@@ -21,6 +21,7 @@ typedef struct {
   // other equation there. NULL: plain f(x) = 0 from b.
   const TokBuf *lin;
   bool swap;
+  double mid;     // the middle of the search: with more roots than room, the ones nearest it stay
 } Sol;
 
 static bool eval2(const TokBuf *e, CalcVars *v, double x, double y, double *f, double *sc) {
@@ -195,9 +196,16 @@ static bool apart(Sol *s, double a, double b) {
 }
 static void add_root(Sol *s, double *out, int *n, int max, double r, double tol) {
   for (int i = 0; i < *n; i++) if (m_fabs(out[i] - r) <= tol && !apart(s, out[i], r)) return;
-  // full: keep the lowest ones, so the list has no gaps (sin x = 0 on
-  // 0..1000: 0, 3.14, 6.28 ..., not whichever were found first)
-  if (*n >= max) { if (max <= 0 || r >= out[max - 1]) return; (*n)--; }
+  // full: keep the ones nearest the middle of the search, so the list has no
+  // gaps and shows what's in view (sin 10x = 0 on -10..10: -0.94 .. 0.94 with 0,
+  // not -9.7 .. -3.8, nor whichever were found first)
+  if (*n >= max) {
+    if (max <= 0) return;
+    double d = m_fabs(r - s->mid), dl = m_fabs(out[0] - s->mid), dh = m_fabs(out[max - 1] - s->mid);
+    if (d >= (dl > dh ? dl : dh)) return;
+    if (dl > dh) for (int k = 0; k < max - 1; k++) out[k] = out[k + 1];   // drop the far end
+    (*n)--;
+  }
   int i = *n;
   while (i > 0 && out[i - 1] > r) { out[i] = out[i - 1]; i--; }   // keep sorted
   out[i] = r;
@@ -278,7 +286,7 @@ int calc_roots(const TokBuf *b, const CalcVars *v, double lo, double hi, double 
   if (!calc_has_x(b) || !(hi > lo)) return 0;
   double l, r;
   if (calc_eval_eq(b, v, &l, &r) == CALC_ERR_SYNTAX) return 0;
-  Sol s = { b, *v, 0.0, 0, ROOT_BUDGET, NULL, false };
+  Sol s = { b, *v, 0.0, 0, ROOT_BUDGET, NULL, false, 0 };
   return roots_core(&s, lo, hi, out, max);
 }
 
@@ -316,6 +324,7 @@ static int roots_core(Sol *sp, double lo, double hi, double *out, int max) {
   bool *ok = (bool *)(tmp + ROOT_SAMPLES + 1);
 #define XS(i) (lo + (hi - lo) * (i) / ROOT_SAMPLES)
   Sol s = *sp;
+  s.mid = (lo + hi) / 2;
   for (int i = 0; i <= ROOT_SAMPLES; i++) {
     s.scale = 0;
     ok[i] = f_at(&s, XS(i), &fs[i]);
@@ -557,6 +566,7 @@ static bool lin_in(const TokBuf *e, const CalcVars *v, bool swap, double t0, dou
 // every root of that, in one variable, so none are missed (y = sin x with
 // y = 0: all seven, x^2 + y^2 = 1 with y = 1: the touching (0, 1)).
 // -1: not this case.
+#define MAX_SOL2 20
 static int elim2(const TokBuf *e1, const TokBuf *e2, const CalcVars *v,
                  double x0, double x1, double y0, double y1, double *xs, double *ys, int max) {
   const TokBuf *E[2] = { e1, e2 };
@@ -566,9 +576,9 @@ static int elim2(const TokBuf *e1, const TokBuf *e2, const CalcVars *v,
     bool fixed = pass < 2;
     for (int k = 0; k < 2; k++) {
       if (!lin_in(E[k], v, sw, sw ? y0 : x0, sw ? y1 : x1, fixed)) continue;
-      Sol s = { E[1 - k], *v, 0.0, 0, ROOT_BUDGET, E[k], sw != 0 };
-      double t[12];
-      int m = roots_core(&s, sw ? y0 : x0, sw ? y1 : x1, t, 12), n = 0;
+      Sol s = { E[1 - k], *v, 0.0, 0, ROOT_BUDGET, E[k], sw != 0, 0 };
+      double t[MAX_SOL2];
+      int m = roots_core(&s, sw ? y0 : x0, sw ? y1 : x1, t, MAX_SOL2), n = 0;
       for (int i = 0; i < m && n < max; i++) {
         double u, fa, fb;
         s.scale = 0;

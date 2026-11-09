@@ -204,6 +204,36 @@ static void merge_exact(SheetIO *io) {
   }
 }
 
+// No roots because it holds everywhere: one equation the same on both sides
+// (2x = 2x, x/x = 1), or two equations that are one curve (y = x, 2y = 2x).
+static void always(SheetIO *io) {
+  SolState *S = io->s;
+  const Calc *c = io->calc;
+  S->always = 0;
+  int def = 0, same = 0;
+  double k = 0;
+  for (int t = 0; t < 13; t++) {
+    CalcVars w = c->v;
+    double x = S->gx0 + (S->gx1 - S->gx0) * (0.0371 + 0.0773 * t), l1, r1, l2 = 0, r2 = 0;
+    w.y = S->gy0 + (S->gy1 - S->gy0) * (0.9137 - 0.0697 * t);
+    if (!calc_sides(S->sys ? &c->eq1 : io->doc_tok, &w, x, &l1, &r1)) continue;
+    if (S->sys && !calc_sides(&c->expr, &w, x, &l2, &r2)) continue;
+    if (!(m_fabs(l1) < 1e300 && m_fabs(r1) < 1e300 && m_fabs(l2) < 1e300 && m_fabs(r2) < 1e300)) continue;
+    def++;
+    double g1 = l1 - r1, g2 = l2 - r2;
+    if (!S->sys) { if (m_fabs(g1) <= 1e-12 * (m_fabs(l1) + m_fabs(r1)) + 1e-300) same++; continue; }
+    if (g1 == 0 && g2 == 0) { same++; continue; }
+    if (g1 == 0 || g2 == 0) continue;
+    if (k == 0) k = g2 / g1;                      // the second a fixed multiple of the first
+    if (m_fabs(g2 - k * g1) <= 1e-12 * (m_fabs(l2) + m_fabs(r2) + m_fabs(k) * (m_fabs(l1) + m_fabs(r1)))) same++;
+  }
+  if (def < 6 || same != def) return;
+  if (S->sys) { S->always = 3; S->nroots = 0; return; }
+  double l, r;                                    // (x/x = 1 has a hole at 0)
+  bool at0 = calc_sides(io->doc_tok, &c->v, 0, &l, &r) && m_fabs(l) < 1e300 && m_fabs(r) < 1e300;
+  S->always = def == 13 && at0 ? 1 : 2;
+}
+
 int sh_find(SheetIO *io) {
   Calc *c = io->calc;
   SolState *S = io->s;
@@ -212,8 +242,10 @@ int sh_find(SheetIO *io) {
   else
     S->nroots = calc_roots(io->doc_tok, &c->v, S->gx0, S->gx1, S->roots, MAX_ROOTS);
   merge_exact(io);                                 // (may find the exact form false)
+  S->always = 0;
+  if (S->sys || !S->nroots) always(io);           // (2x = 2x; y = x twice)
   // Nothing on first look: widen the search a few times (sin x = 0.5 in degrees).
-  if (S->nroots == 0 && S->expand > 0) return 1;
+  if (S->nroots == 0 && S->expand > 0 && !S->always) return 1;
   // highlight the answer nearest the middle of the search box
   double cx = (S->gx0 + S->gx1) / 2, cy = (S->gy0 + S->gy1) / 2, best = 1e300;
   S->sel = 0;

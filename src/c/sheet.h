@@ -21,6 +21,7 @@ typedef struct {
   bool has_exact;                           // the equation is one we simplify / solve exactly
   bool has_x, has_eq;                       // what the expression holds
   bool fit;                                 // re-fit the graph's y range around the roots once found
+  uint8_t always;                           // no roots because it holds for every x: 1, or 2 (where it's defined); 3: two equations, one curve
   double gx0, gx1, gy0, gy1;                // search box (and graph view)
   double roots[MAX_ROOTS], root_y[MAX_ROOTS];   // x (and y for systems; the curve's y with the graph)
   int8_t rx[MAX_ROOTS];                     // the exact form a row shows, or -1

@@ -107,6 +107,10 @@ eval "\"$OUT/sim\" $T \"key 2 3\" $D \"btn select\" \"btn down\" \"btn down\" \"
 "$OUT/sim" "k 131" "k 47" "k 40" "k 50" "k 61" "k 51" state | grep -q "STATE \[x/(2)=3\]" && \
 "$OUT/sim" "k 49" "k 47" "k 40" "k 50" "k 43" "k 51" "k 41" draw "down 180 40" timer draw "move 165 45" "lift 165 45" "k 61" state \
   | grep -q "STATE \[1/(2+|3)\]" && echo "= outside brackets: ok"
+# an equation that holds for every x says so (not "No roots found")
+"$OUT/sim" "k 50" "k 131" "k 61" "k 50" "k 131" "k 200" anim timer anim frame | grep -q "True for every x" && echo "Identity equation: ok"
+# the same equation twice is one curve, not a list of points
+"$OUT/sim" "k 151" "k 61" "k 131" "k 200" "k 151" "k 61" "k 131" "k 200" anim timer anim frame | grep -q "The same curve twice" && echo "Same curve twice: ok"
 # graphing something with z says so instead of plotting it
 "$OUT/sim" "k 131" "k 43" "k 190" "btn up" "btn up" "key 2 2" frame | grep -q "Graph: z isn't defined" && echo "Graph with z: ok"
 # a formula too tall for the small line (a fraction in a power) becomes one line of text

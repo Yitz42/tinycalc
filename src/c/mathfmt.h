@@ -64,6 +64,12 @@ typedef struct {
   int asc[MATH_LEVELS], desc[MATH_LEVELS];             // cap height / descent
 } MathGfx;
 
+#ifndef SIM
+// The typesetter's scratch doc on the watch: allocated with the fmt overlay
+// and freed with it, so it makes way along with it for a big overlay.
+#define MATH_SCRATCH ((MathDoc *)8)
+#endif
+
 // Builds the tree. b must stay alive while the doc is used.
 void math_build(MathDoc *d, const TokBuf *b);
 // Same from a raw token array; T_SEP splits a system into two lines.

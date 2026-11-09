@@ -28,6 +28,8 @@ static const uint32_t RES[OV_COUNT] = { RESOURCE_ID_OVL_MATH, RESOURCE_ID_OVL_CA
                                         RESOURCE_ID_OVL_FMT, RESOURCE_ID_OVL_TOOLS, RESOURCE_ID_OVL_CPLX, RESOURCE_ID_OVL_CALCU };
 static void log_msg(const char *m) { APP_LOG(APP_LOG_LEVEL_INFO, "%s", m); }
 static unsigned s_running;                             // overlays now running (bit per slot): never freed
+static MathDoc *s_scratch;                             // the typesetter's scratch doc (MATH_SCRATCH)
+static void fmt_unload(void) { ovl_unload(&s_ov[OV_FMT]); free(s_scratch); s_scratch = NULL; }
 
 static void unload_except(int keep) {
   for (int i = 0; i < OV_COUNT; i++)
@@ -40,7 +42,7 @@ static void *ovl_malloc(size_t n) {
   if (!p) { unload_except(-1); p = malloc(n); }
   // still short: the typesetter too, unless it is what's running (it is
   // loaded again when next needed)
-  if (!p && !(s_running & (1u << OV_FMT)) && s_ov[OV_FMT].mem) { ovl_unload(&s_ov[OV_FMT]); p = malloc(n); }
+  if (!p && !(s_running & (1u << OV_FMT)) && s_ov[OV_FMT].mem) { fmt_unload(); p = malloc(n); }
   return p;
 }
 static const OvlApi API = { OVL_API_VERSION, ovl_malloc, free, log_msg };
@@ -50,7 +52,7 @@ static bool ensure(int id) {
   // The typesetter makes way first (it is loaded again when next needed, above
   // this one): left in the middle it would split the free memory, and the
   // overlay's own working memory (a root search, an algebra tree) might not fit.
-  if (id != OV_FMT && !(s_running & (1u << OV_FMT)) && s_ov[OV_FMT].mem) ovl_unload(&s_ov[OV_FMT]);
+  if (id != OV_FMT && !(s_running & (1u << OV_FMT)) && s_ov[OV_FMT].mem) fmt_unload();
   if (ovl_load(&s_ov[id], RES[id])) return true;
   unload_except(id);                                   // make room and try again
   if (ovl_load(&s_ov[id], RES[id])) return true;
@@ -68,7 +70,7 @@ static bool call(int id, int cmd, void *args) {
 }
 static bool run(int cmd, void *args) { return call(OV_MATH, cmd, args); }
 
-void ovl_unload_all(void) { unload_except(-1); ovl_unload(&s_ov[OV_FMT]); }
+void ovl_unload_all(void) { unload_except(-1); fmt_unload(); }
 
 int calc_roots(const TokBuf *b, const CalcVars *v, double lo, double hi, double *out, int max) {
   OmRoots a = { b, v, lo, hi, out, max, 0 };
@@ -158,11 +160,21 @@ bool exact_value(double val, TokBuf *out) {
 
 // ---- the typesetter (fmt overlay, resident)
 bool fmt_overlay_load(void) { return ensure(OV_FMT); }
-static bool fmt(int cmd, OfArgs *a) { return call(OV_FMT, cmd, a); }   // (loaded again if it made way)
+// (loaded again if it made way; its scratch doc just above it)
+static bool fmt(int cmd, OfArgs *a) {
+  if (!ensure(OV_FMT)) return false;
+  if (a->d == MATH_SCRATCH) {
+    if (!s_scratch) s_scratch = malloc(sizeof(MathDoc));
+    if (!s_scratch) { unload_except(-1); s_scratch = malloc(sizeof(MathDoc)); }
+    if (!s_scratch) return false;
+    a->d = s_scratch;
+  }
+  return call(OV_FMT, cmd, a);
+}
 
 void math_build_raw(MathDoc *d, const uint8_t *t, int n) {
   OfArgs a = { .d = d, .t = t, .n = n };
-  if (!fmt(OF_BUILD, &a)) { d->count = 0; d->root = 0; }
+  if (!fmt(OF_BUILD, &a) && d != MATH_SCRATCH) { d->count = 0; d->root = 0; }
 }
 void math_build(MathDoc *d, const TokBuf *b) { math_build_raw(d, b->t, b->n); }
 void math_wrap_integral(MathDoc *d, const char *lo, const char *hi) {

@@ -479,10 +479,10 @@ static int s_xscroll, s_xmax;          // px shown left of the right-aligned spo
 static bool s_xfollow = true;          // scroll to the cursor
 static int clampi(int v, int lo, int hi);
 
-typedef struct { int lvl, x, base, w; } EditLay;
+typedef struct { int lvl, x, base, w; bool tall; } EditLay;
 
 static EditLay edit_layout(GRect r, bool cursor) {
-  EditLay L = { EDIT_MIN_LVL, 0, 0, 0 };
+  EditLay L = { EDIT_MIN_LVL, 0, 0, 0, false };
   int w = 0, as = 0, de = 0, lvl;
   for (lvl = 0; lvl <= EDIT_MIN_LVL; lvl++) {       // largest that fits both ways
     math_measure(s_doc2, &s_mg, lvl, &w, &as, &de);
@@ -495,7 +495,7 @@ static EditLay edit_layout(GRect r, bool cursor) {
     }
     math_measure(s_doc2, &s_mg, lvl, &w, &as, &de);
   }
-  L.lvl = lvl; L.w = w;
+  L.lvl = lvl; L.w = w; L.tall = as + de > r.size.h;
   L.base = as + de <= r.size.h ? r.origin.y + (r.size.h - as - de) / 2 + as : r.origin.y + as;
   s_xmax = w > r.size.w ? w - r.size.w : 0;
   if (s_xfollow) {
@@ -527,10 +527,21 @@ static void edit_draw(GContext *ctx, int n, GRect r, GColor ink, bool cursor) {
   graphics_context_set_stroke_color(ctx, ink);
   math_draw(s_doc2, &s_mg, L.x, L.base);
   graphics_context_set_stroke_width(ctx, 1);
-  if (s_xmax) {                                     // cover what runs past the box; arrows where there's more
+  if (L.tall) {                                     // too tall even small: the top shows, the rest is cut off
     graphics_context_set_fill_color(ctx, GColorPastelYellow);
-    graphics_fill_rect(ctx, GRect(3, r.origin.y + 3, r.origin.x - 3, r.size.h - 6), 0, GCornerNone);   // (clear of the round corners)
-    graphics_fill_rect(ctx, GRect(r.origin.x + r.size.w, r.origin.y + 3, SCR_W - 3 - r.origin.x - r.size.w, r.size.h - 6), 0, GCornerNone);
+    int y0 = r.origin.y + r.size.h;
+    graphics_fill_rect(ctx, GRect(3, y0, SCR_W - 6, 55 - y0), 0, GCornerNone);
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_fill_rect(ctx, GRect(0, PANEL_H, SCR_W, KEY_Y - PANEL_H), 0, GCornerNone);
+  }
+  if (s_xmax) {                                     // cover what runs past the box; arrows where there's more
+    int y0 = r.origin.y < 9 ? 9 : r.origin.y, y1 = r.origin.y + r.size.h > 55 ? 55 : r.origin.y + r.size.h;
+    graphics_context_set_fill_color(ctx, GColorBlack);          // outside the panel
+    graphics_fill_rect(ctx, GRect(0, r.origin.y, 2, r.size.h), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(SCR_W - 2, r.origin.y, 2, r.size.h), 0, GCornerNone);
+    graphics_context_set_fill_color(ctx, GColorPastelYellow);   // the panel's margins (clear of its round corners)
+    graphics_fill_rect(ctx, GRect(2, y0, r.origin.x - 2, y1 - y0), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(r.origin.x + r.size.w, y0, SCR_W - 2 - r.origin.x - r.size.w, y1 - y0), 0, GCornerNone);
     graphics_context_set_stroke_color(ctx, GColorDarkGray);
     int my = r.origin.y + r.size.h / 2, ex = r.origin.x + r.size.w;
     for (int i = 0; i < 4; i++) {                   // small arrowheads: more that way
@@ -1473,6 +1484,12 @@ static void draw_solver_body(GContext *ctx, int oy, int sy, bool g) {
     sol_text(ctx, "like x^2=2, then SOLVE.", s_f18, GRect(0, ly + 22 + sy, SCR_W, 22), GTextAlignmentCenter, GColorLightGray);
   } else if (s_finding) {
     sol_text(ctx, s_sys ? "Solving..." : "Finding roots...", s_f18b, row0, GTextAlignmentCenter, GColorLightGray);
+  } else if (s_nroots == 0 && S.always == 3) {     // y = x twice: every point of it
+    sol_text(ctx, "The same curve twice", s_f18b, row0, GTextAlignmentCenter, GColorLightGray);
+    sol_text(ctx, "every point on it solves both", s_f14, GRect(4, ly + 24 + sy, 192, 18), GTextAlignmentCenter, GColorDarkGray);
+  } else if (s_nroots == 0 && S.always) {          // 2x = 2x: every x is a solution
+    sol_text(ctx, "True for every x", s_f18b, row0, GTextAlignmentCenter, GColorLightGray);
+    if (S.always == 2) sol_text(ctx, "where it's defined", s_f14, GRect(4, ly + 24 + sy, 192, 18), GTextAlignmentCenter, GColorDarkGray);
   } else if (s_nroots == 0) {
     sol_text(ctx, s_sys ? "No solutions found" : "No roots found", s_f18b, row0, GTextAlignmentCenter, GColorLightGray);
     sol_text(ctx, g ? "drag the graph or zoom out" : "tap - to search wider", s_f14,
@@ -2423,7 +2440,11 @@ static void init(void) {
   app_message_register_inbox_received(inbox);
   app_message_open(128, 0);              // settings from the phone; nothing is sent back
   s_doc_mem = malloc(sizeof(MathDoc));
+#ifdef SIM
   s_doc2 = malloc(sizeof(MathDoc));
+#else
+  s_doc2 = MATH_SCRATCH;                 // comes and goes with the typesetter
+#endif
   s_exact = malloc(sizeof(Exact));
   s_gs = calloc(1, sizeof(GraphState));
   s_gsrc = calloc(1, sizeof(TokBuf));
@@ -2458,7 +2479,9 @@ static void deinit(void) {
   light_enable(false);
   free(s_doc_mem);
   free(s_hist); free(s_small); free(s_big); free(s_stat); free(s_alt_tok);
+#ifdef SIM
   free(s_doc2);
+#endif
   free(s_exact);
   free(s_gs->grid); free(s_gs->ca); free(s_gs->cb); free(s_gs); free(s_gsrc); free(s_cx); free(s_cy);
   window_destroy(s_window);
