@@ -157,6 +157,7 @@ int     calc_roots(const TokBuf *b, const CalcVars *v, double lo, double hi, dou
 void    calc_take_root(Calc *c, double r);
 bool    calc_has_y(const TokBuf *b);
 bool    calc_has_z(const TokBuf *b);
+extern bool calc_refused;   // the last key was refused (an "=" inside brackets): the app buzzes
 // Three linear equations in x, y, z (calcx.c): the one solution, CALC_ERR_NOSOL
 // (none, or not just one) or CALC_ERR_LIN3 (not all linear).
 CalcErr calc_solve3(const TokBuf *e1, const TokBuf *e2, const TokBuf *e3, const CalcVars *v, double xyz[3]);

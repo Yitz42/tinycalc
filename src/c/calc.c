@@ -1055,10 +1055,20 @@ static void lim_enter(Calc *c) {
 
 // Typing at the cursor. "/" follows the usual order of operations: 1+2
 // then / 3 is 1 + 2/3 (only the 2 on top); brackets put more on top.
+bool calc_refused;
+
 static void ins(Calc *c, uint8_t t) {
   TokBuf *b = &c->expr;
   // A digit after a lone leading zero replaces it: 0 then 1 is 1 (0.5, 10, 105 stay as typed).
   int at = (c->cur == CALC_CUR_END || c->cur >= b->n) ? b->n : c->cur;
+  if (t == '=') {                                      // "=" splits the sides: never inside brackets
+    int d = 0;
+    for (int i = 0; i < at; i++) d += (b->t[i] == '(' || is_func(b->t[i])) ? 1 : b->t[i] == ')' ? -1 : 0;
+    if (d > 0) {
+      if (at < b->n) { calc_refused = true; return; }  // in the middle of a bracket (or under a fraction)
+      while (d-- > 0) push(b, ')');                    // at the end: close them first
+    }
+  }
   if (is_digit(t) && at > 0 && b->t[at - 1] == '0' &&
       (at == 1 || !(is_digit(b->t[at - 2]) || b->t[at - 2] == '.')) &&
       (at == b->n || !(is_digit(b->t[at]) || b->t[at] == '.'))) {

@@ -827,6 +827,7 @@ static void hist_use(int i) {
   }
 }
 
+static void buzz(uint32_t ms);
 static void press_code(int code) {
   s_xfollow = true;                        // a key: the cursor (or end) comes back into view
   s_alt = ALT_NONE;
@@ -862,6 +863,7 @@ static void press_code(int code) {
     return;
   }
   calc_key(&s_calc, code);
+  if (calc_refused) { calc_refused = false; buzz(60); }
   hist_note();
   redraw();
 }
