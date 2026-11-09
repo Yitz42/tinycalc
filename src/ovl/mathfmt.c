@@ -102,7 +102,19 @@ static uint8_t paren(MathDoc *d, uint8_t a, bool closed) {
 static uint8_t b_primary(MathDoc *d, int depth) {
   int k = pk(d);
   if (k < 0 || !starts_primary(k)) return box(d);
-  if (is_digit(k) || k == '.' || k == T_EE) return b_number(d);
+  // A cursor inside or just after a number stays part of it: 23|4 under a
+  // fraction bar is still one number there, not 23 times 4 beside it.
+  if (is_digit(k) || k == '.' || k == T_EE || (k == T_CUR && d->i + 1 < d->ntok &&
+      (is_digit(d->tok[d->i + 1]) || d->tok[d->i + 1] == '.'))) {
+    uint8_t m = k == T_CUR ? NONE : b_number(d);
+    while (pk(d) == T_CUR) {
+      d->i++;
+      uint8_t c = leaf(d, MN_CURSOR, NULL);
+      m = m == NONE ? c : mk(d, MN_CAT, m, c, NULL);
+      if (is_digit(pk(d)) || pk(d) == '.' || pk(d) == T_EE) m = mk(d, MN_CAT, m, b_number(d), NULL);
+    }
+    return m;
+  }
   d->i++;
   switch (k) {
     case T_PI: return leaf(d, MN_PI, NULL);
