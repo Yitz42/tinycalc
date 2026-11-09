@@ -103,6 +103,8 @@ eval "\"$OUT/sim\" $T \"key 2 3\" $D \"btn select\" \"btn down\" \"btn down\" \"
   | grep -q "\[normcdf(1 =\] \[0.8413447461\]" \
   && eval "\"$OUT/sim\" \"k 51\" \"k 54\" \"k 48\" \"k 200\" $T \"key 2 3\" $D \"btn select\" \"btn down\" \"btn down\" \"btn down\" \"btn down\" \"btn down\" \"btn down\" \"btn select\" frame" \
   | grep -q "2^3 \* 3^2 \* 5" && echo "Probability: ok"
+# graphing something with z says so instead of plotting it
+"$OUT/sim" "k 131" "k 43" "k 190" "btn up" "btn up" "key 2 2" frame | grep -q "Graph: z isn't defined" && echo "Graph with z: ok"
 # a formula too tall for the small line (a fraction in a power) becomes one line of text
 "$OUT/sim" "k 40" "k 49" "k 43" "k 49" "k 47" "k 49" "k 128" "k 49" "k 50" "k 41" "k 94" "k 49" "k 128" "k 49" "k 50" "k 200" frame \
   | grep -q "B (1+1/1E12)^1E12 =" && echo "Tall formula on one line: ok"

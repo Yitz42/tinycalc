@@ -471,6 +471,75 @@ static int tok_append(int n, const TokBuf *b, int cur) {   // copies b, with the
   return n;
 }
 
+// The line being typed: it shrinks only to a readable size (18), then scrolls
+// sideways instead, keeping the cursor (or the end) in view. A drag sideways
+// on the display scrolls it too (s_xfollow off until the next key).
+#define EDIT_MIN_LVL 2
+static int s_xscroll, s_xmax;          // px shown left of the right-aligned spot; how far it can go
+static bool s_xfollow = true;          // scroll to the cursor
+static int clampi(int v, int lo, int hi);
+
+typedef struct { int lvl, x, base, w; } EditLay;
+
+static EditLay edit_layout(GRect r, bool cursor) {
+  EditLay L = { EDIT_MIN_LVL, 0, 0, 0 };
+  int w = 0, as = 0, de = 0, lvl;
+  for (lvl = 0; lvl <= EDIT_MIN_LVL; lvl++) {       // largest that fits both ways
+    math_measure(s_doc2, &s_mg, lvl, &w, &as, &de);
+    if (w <= r.size.w && as + de <= r.size.h) break;
+  }
+  if (lvl > EDIT_MIN_LVL) {                         // too wide even at 18: scroll at 18
+    for (lvl = EDIT_MIN_LVL; lvl < MATH_LEVELS - 1; lvl++) {   // (smaller only if it's too tall)
+      math_measure(s_doc2, &s_mg, lvl, &w, &as, &de);
+      if (as + de <= r.size.h) break;
+    }
+    math_measure(s_doc2, &s_mg, lvl, &w, &as, &de);
+  }
+  L.lvl = lvl; L.w = w;
+  L.base = as + de <= r.size.h ? r.origin.y + (r.size.h - as - de) / 2 + as : r.origin.y + as;
+  s_xmax = w > r.size.w ? w - r.size.w : 0;
+  if (s_xfollow) {
+    if (!cursor) s_xscroll = 0;                     // typing at the end: the end shows
+    else if (s_xmax) {                              // where the cursor falls, then just enough scroll
+      MathCtx mc = { NULL, 0, 0, GColorBlack };
+      s_mg.ctx = &mc;
+      s_rec = true; s_rec_next = s_rec_got = false;
+      math_draw(s_doc2, &s_mg, 0, 0);
+      s_rec = false;
+      if (s_rec_got) {
+        int cx = r.size.w - w + s_xscroll + s_rec_x;  // the cursor, from the box's left
+        if (cx < 6) s_xscroll += 6 - cx;
+        if (cx > r.size.w - 6) s_xscroll -= cx - (r.size.w - 6);
+      }
+    }
+  }
+  s_xscroll = clampi(s_xscroll, 0, s_xmax);
+  L.x = r.origin.x + r.size.w - w + s_xscroll;
+  return L;
+}
+
+static void edit_draw(GContext *ctx, int n, GRect r, GColor ink, bool cursor) {
+  math_build_raw(s_doc2, s_ptok, n);
+  EditLay L = edit_layout(r, cursor);
+  MathCtx mc = { ctx, 0, 0, ink };
+  s_mg.ctx = &mc;
+  graphics_context_set_text_color(ctx, ink);
+  graphics_context_set_stroke_color(ctx, ink);
+  math_draw(s_doc2, &s_mg, L.x, L.base);
+  graphics_context_set_stroke_width(ctx, 1);
+  if (s_xmax) {                                     // cover what runs past the box; arrows where there's more
+    graphics_context_set_fill_color(ctx, GColorPastelYellow);
+    graphics_fill_rect(ctx, GRect(3, r.origin.y + 3, r.origin.x - 3, r.size.h - 6), 0, GCornerNone);   // (clear of the round corners)
+    graphics_fill_rect(ctx, GRect(r.origin.x + r.size.w, r.origin.y + 3, SCR_W - 3 - r.origin.x - r.size.w, r.size.h - 6), 0, GCornerNone);
+    graphics_context_set_stroke_color(ctx, GColorDarkGray);
+    int my = r.origin.y + r.size.h / 2, ex = r.origin.x + r.size.w;
+    for (int i = 0; i < 4; i++) {                   // small arrowheads: more that way
+      if (s_xscroll < s_xmax) graphics_draw_line(ctx, GPoint(3 + i, my - i), GPoint(3 + i, my + i));
+      if (s_xscroll > 0) graphics_draw_line(ctx, GPoint(ex + 4 - i, my - i), GPoint(ex + 4 - i, my + i));
+    }
+  }
+}
+
 #define MAX_CARETS 64                 // longer expressions drag left/right only
 static int16_t *s_cx, *s_cy;          // screen position of the cursor at each token position (heap)
 static int s_ncar = -1;               // positions known (expr.n + 1), or -1
@@ -481,17 +550,21 @@ static void carets(GContext *ctx, GRect r) {
   s_ncar = -1;
   int n = s_calc.expr.n;
   if (n + 1 > MAX_CARETS || !s_cx) return;
-  s_rec = true;
   for (int p = 0; p <= n; p++) {
     int k = tok_append(0, &s_calc.expr, p);
-    s_rec_next = s_rec_got = false;
-    if (!math_fit(ctx, s_ptok, k, WRAP_NONE, NULL, NULL, r, 0, NULL, GColorBlack, true) || !s_rec_got) {
-      s_rec = false;
-      return;
-    }
+    math_build_raw(s_doc2, s_ptok, k);
+    s_xfollow = false;                         // (laying out only)
+    EditLay L = edit_layout(r, false);
+    s_xfollow = true;
+    if (s_xmax) return;                        // it scrolls: the cursor slides along instead
+    MathCtx mc = { ctx, 0, 0, GColorBlack };
+    s_mg.ctx = &mc;
+    s_rec = true; s_rec_next = s_rec_got = false;
+    math_draw(s_doc2, &s_mg, L.x, L.base);
+    s_rec = false;
+    if (!s_rec_got) return;
     s_cx[p] = (int16_t)s_rec_x; s_cy[p] = (int16_t)s_rec_y;
   }
-  s_rec = false;
   s_ncar = n + 1;
 }
 
@@ -553,10 +626,7 @@ static void draw_panel(GContext *ctx) {
         draw_fit(ctx, "0", NUM, bf, 3);
       } else {
         int n = tok_append(0, &s_calc.expr, cur);
-        if (!math_fit(ctx, s_ptok, n, WRAP_NONE, NULL, NULL, BR, 0, NULL, ink, cur != CALC_CUR_END)) {
-          graphics_context_set_text_color(ctx, ink);    // too long with a cursor: plain text keeps it in view
-          draw_fit(ctx, s_big, BR, bf, 3);
-        }
+        edit_draw(ctx, n, BR, ink, cur != CALC_CUR_END);
       }
       break;
     }
@@ -566,10 +636,7 @@ static void draw_panel(GContext *ctx) {
       if (s_want_carets && cur != CALC_CUR_END) carets(ctx, BR);
       if (s_calc.expr.n || cur != CALC_CUR_END) {
         n = tok_append(0, &s_calc.expr, cur);
-        if (!math_fit(ctx, s_ptok, n, WRAP_NONE, NULL, NULL, BR, 0, NULL, ink, cur != CALC_CUR_END)) {
-          graphics_context_set_text_color(ctx, ink);
-          draw_fit(ctx, s_big, BR, bf, 3);
-        }
+        edit_draw(ctx, n, BR, ink, cur != CALC_CUR_END);
       } else {
         graphics_context_set_text_color(ctx, dim);
         draw_fit(ctx, s_calc.eq2.n ? "3rd equation?" : "2nd equation?", NUM, bf, 3);
@@ -761,6 +828,7 @@ static void hist_use(int i) {
 }
 
 static void press_code(int code) {
+  s_xfollow = true;                        // a key: the cursor (or end) comes back into view
   s_alt = ALT_NONE;
   // SOLVE (or = on a solved equation) shows the roots on the solver sheet.
   bool solve_key = code == K_SOLVE || code == K_EVAL;
@@ -1280,6 +1348,7 @@ static void sol_zoom(double f) {
 static bool solver_can_open(void) {
   double v;
   return s_calc.expr.n && calc_has_x(&s_calc.expr) && !calc_has_y(&s_calc.expr) &&
+         !calc_has_z(&s_calc.expr) &&            // z is an unknown too: a system, not the solver sheet
          calc_eval(&s_calc.expr, &s_calc.v, &v) != CALC_ERR_SYNTAX;
 }
 
@@ -1572,6 +1641,7 @@ static void menu_press(int i) {
   s_alt = ALT_NONE;
   int a = tl_pick(&s_tio, s_tlist, i);
   for (int k = 0; k < s_tio.nkeys; k++) calc_key(&s_calc, s_tio.keys[k]);
+  s_xfollow = true;
   if (a == TA_ALT) { snprintf(s_alt_txt, sizeof s_alt_txt, "%s", s_tio.alt); s_alt = ALT_TEXT; }
   if (a == TA_KEEP) { save_stats(); redraw(); return; }          // statistics: data added or cleared
   if (a == TA_NONE) { buzz(60); return; }
@@ -1734,6 +1804,11 @@ static void graph_open(void) {
     src = &s_calc.eq1;                           // the function of a d/dx or integral
   if (s_calc.mode == MODE_EQ2 && !s_calc.expr.n) src = &s_calc.eq1;   // waiting for a 2nd equation: the 1st
   if (!src->n || !s_gs || !s_gsrc) return;
+  if (calc_has_z(src)) {                        // a graph has x and y only: z is an unknown it can't show
+    s_calc.mode = MODE_ERROR; s_calc.err = CALC_ERR_GRAPHZ;
+    buzz(60); redraw();
+    return;
+  }
   *s_gsrc = *src;
   GrArgs a; gs_args(&a);
   a.src = src; a.out = &s_gtok;
@@ -1835,9 +1910,9 @@ static void inbox(DictionaryIterator *it, void *ctx) {
 
 #if defined(PBL_TOUCH)
 enum { DRAG_TAP, DRAG_PAGE, DRAG_PULL, DRAG_PUSH, DRAG_PAN,
-       DRAG_PULLUP, DRAG_PUSHDOWN, DRAG_GRAPH, DRAG_CURSOR, DRAG_MENU, DRAG_SSCROLL, DRAG_GSHEET, DRAG_NONE };
+       DRAG_PULLUP, DRAG_PUSHDOWN, DRAG_GRAPH, DRAG_CURSOR, DRAG_MENU, DRAG_SSCROLL, DRAG_GSHEET, DRAG_XSCROLL, DRAG_NONE };
 static double s_g0x0, s_g0x1, s_g0y0, s_g0y1;
-static int s_tx0, s_ty0, s_down, s_drag = DRAG_NONE, s_pan_x0, s_pan_y0, s_mtop0;
+static int s_tx0, s_ty0, s_down, s_drag = DRAG_NONE, s_pan_x0, s_pan_y0, s_mtop0, s_xs0;
 static int iabs(int v) { return v < 0 ? -v : v; }
 
 // Hold still on the display for a moment: a cursor appears, slide to move it.
@@ -1864,6 +1939,7 @@ static void hold_cb(void *data) {
   s_cur0 = s_calc.cur == CALC_CUR_END ? n : s_calc.cur;
   if (!calc_set_cursor(&s_calc, s_cur0)) return;
   s_drag = DRAG_CURSOR;
+  s_xfollow = true;
   s_pressed = -1;
   s_want_carets = true;                  // worked out on the next draw
   s_ncar = -1;
@@ -1967,7 +2043,11 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
           else s_drag = DRAG_PAN;   // nothing to do
         } else if (!s_sheet_open) {
           s_pressed = -1;
-          if (vertical && dy > 0 && s_ty0 < 57 && s_page < N_KEYPADS && s_sol_y >= SOL_CLOSED) {   // top quarter only
+          if (!vertical && s_ty0 < PANEL_H && s_xmax > 0 &&
+              (s_calc.mode == MODE_EDIT || s_calc.mode == MODE_EQ2)) {   // a long line: slide it along
+            s_drag = DRAG_XSCROLL;
+            s_xs0 = s_xscroll;
+          } else if (vertical && dy > 0 && s_ty0 < 57 && s_page < N_KEYPADS && s_sol_y >= SOL_CLOSED) {   // top quarter only
             s_drag = DRAG_PULL;
             if (s_sheet_y <= SHEET_CLOSED) sheet_prepare();
             s_sheet_target = SHEET_CLOSED;   // finger is in charge now
@@ -1989,7 +2069,11 @@ static void touch_handler(const TouchEvent *e, void *ctx) {
           else s_drag = DRAG_PAN;
         }
       }
-      if (s_drag == DRAG_SSCROLL) {
+      if (s_drag == DRAG_XSCROLL) {
+        s_xfollow = false;
+        s_xscroll = clampi(s_xs0 + dx, 0, s_xmax);
+        redraw();
+      } else if (s_drag == DRAG_SSCROLL) {
         s_sscroll = clampi(s_pan_y0 - dy, 0, sol_max_scroll());
         redraw();
       } else if (s_drag == DRAG_PUSHDOWN) {

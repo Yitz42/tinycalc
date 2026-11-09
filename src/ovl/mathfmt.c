@@ -32,8 +32,13 @@ static bool starts_primary(int k) {
          k == T_PI || k == T_E || k == T_X || k == T_Y || k == T_Z || k == T_ANS || k == T_I || k == T_CUR || k == T_RAN || (k >= T_MA && k <= T_MF);
 }
 static bool is_sep(int k) { return k == T_SEP || k == T_NL || k == T_COMMA; }
-// Parentheses that only group (fraction parts, exponents) are implied by layout.
+// Parentheses that only group (fraction parts, exponents) are implied by layout,
+// once closed: while still open they show, so you can see you're inside them.
 static uint8_t strip(MathDoc *d, uint8_t k) {
+  return (k != NONE && d->n[k].type == MN_PAREN && !d->n[k].len) ? d->n[k].a : k;
+}
+// A function's own brackets (sin(...), sqrt(...)): it shows them itself.
+static uint8_t unwrap(MathDoc *d, uint8_t k) {
   return (k != NONE && d->n[k].type == MN_PAREN) ? d->n[k].a : k;
 }
 
@@ -124,21 +129,21 @@ static uint8_t b_primary(MathDoc *d, int depth) {
     int n = args(d, a, g, 3);
     for (int i = n; i < 3; i++) g[i] = box(d);
     if (k == T_LOGB)
-      return mk(d, MN_CAT, mk(d, MN_SUB, leaf(d, MN_TEXT, "log"), strip(d, g[0]), NULL), paren(d, g[1], closed), NULL);
-    if (k == T_ROOT) return mk(d, MN_NROOT, strip(d, g[1]), strip(d, g[0]), NULL);
-    uint8_t body = strip(d, g[0]);
+      return mk(d, MN_CAT, mk(d, MN_SUB, leaf(d, MN_TEXT, "log"), unwrap(d, g[0]), NULL), paren(d, g[1], closed), NULL);
+    if (k == T_ROOT) return mk(d, MN_NROOT, unwrap(d, g[1]), unwrap(d, g[0]), NULL);
+    uint8_t body = unwrap(d, g[0]);
     const MNode *bn = &d->n[body];
     if (bn->type == MN_BIN && (bn->text[0] == '+' || bn->text[0] == '-')) body = paren(d, body, true);
-    uint8_t lo = mk(d, MN_BIN, leaf(d, MN_TEXT, "x"), strip(d, g[1]), "=");
-    return mk(d, MN_BIGOP, body, mk(d, MN_LIMS, lo, strip(d, g[2]), NULL), k == T_SUM ? "S" : "P");
+    uint8_t lo = mk(d, MN_BIN, leaf(d, MN_TEXT, "x"), unwrap(d, g[1]), "=");
+    return mk(d, MN_BIGOP, body, mk(d, MN_LIMS, lo, unwrap(d, g[2]), NULL), k == T_SUM ? "S" : "P");
   }
-  a = strip(d, a);   // sqrt((1+x)) shows one set of brackets
+  a = unwrap(d, a);   // sqrt((1+x)) shows one set of brackets
   switch (k) {
     case T_SQRT: return mk(d, MN_SQRT, a, NONE, NULL);
     case T_CBRT: return mk(d, MN_CBRT, a, NONE, NULL);
     case T_ABS: return mk(d, MN_ABS, a, NONE, NULL);
-    case T_EXP: return mk(d, MN_POW, leaf(d, MN_TEXT, "e"), strip(d, a), NULL);
-    case T_TENX: return mk(d, MN_POW, leaf(d, MN_TEXT, "10"), strip(d, a), NULL);
+    case T_EXP: return mk(d, MN_POW, leaf(d, MN_TEXT, "e"), unwrap(d, a), NULL);
+    case T_TENX: return mk(d, MN_POW, leaf(d, MN_TEXT, "10"), unwrap(d, a), NULL);
     default: break;
   }
   const char *name;

@@ -2,7 +2,7 @@
   "name": "tinysci",
   "author": "Yitz",
   "description": "Touch calculator that types like math and solves equations: every root, exact answers, x/y systems, integrals, derivatives and answer history.",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "keywords": [
     "pebble-app"
   ],

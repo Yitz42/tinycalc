@@ -64,6 +64,7 @@ typedef enum {
   CALC_ERR_SYM,     // no formula found (symbolic integral, factor, ...)
   CALC_ERR_LIN3,    // three equations that aren't all linear
   CALC_ERR_INT,     // an integral that doesn't settle (sin x over a huge range)
+  CALC_ERR_GRAPHZ,  // graphing something with z in it (a graph has x and y only)
 } CalcErr;
 
 typedef enum { MODE_EDIT = 0, MODE_RESULT, MODE_ERROR,

@@ -204,6 +204,11 @@ int main(int argc, char **argv) {
       run_timer();
     } else if (!strcmp(argv[i], "frame")) {
       frame();
+    } else if (!strcmp(argv[i], "draw")) {               // a redraw, as the watch does, with no output
+      fflush(stdout);
+      FILE *keep = stdout; stdout = fopen("/dev/null", "w");
+      g_layers[0].proc(&g_layers[0], NULL);
+      fclose(stdout); stdout = keep;
     }
   }
   printf("POPPED %d\n", g_popped);

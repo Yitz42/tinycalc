@@ -160,6 +160,7 @@ const char *calc_err_text(CalcErr e) {
     case CALC_ERR_SYM: return "No formula found";
     case CALC_ERR_LIN3: return "3 unknowns: linear only";
     case CALC_ERR_INT: return "Integral won't settle";
+    case CALC_ERR_GRAPHZ: return "Graph: z isn't defined";
     default: return "";
   }
 }
